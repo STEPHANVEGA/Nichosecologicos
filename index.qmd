@@ -1,0 +1,880 @@
+---
+title: "Nicho Ecológico"
+author: "Stefanny Vega Calvo"
+format: html
+editor: visual
+lang: es
+toc: true
+theme: cosmo
+---
+
+# Myadestes melanops (Jilguero)
+
+El jilguero es una especie endémica de zonas altas de **Costa
+Rica y el oeste de Panamá**. Es una de las especies más apreciadas como ave de
+jaula en Costa Rica, esto debido a su hermoso canto.
+
+El estudio de esta ave es importante ya que solo en estos dos país, pero principalmente en Costa Rica es donde se cuenta con precencia.
+
+
+## Introducción 
+
+Los modelos de nichos ecológicos permiten predecir la distribución potencial de especies en función de datos de presencia y variables ambientales
+
+
+## Modelo de nichos ecológicos 
+
+### Carga de librería
+
+Este debe comenzar con la carga de toda las librerías requeridas para trabajar los datos. desde crear gráficos, mapas y  modelos. 
+
+```{r}
+#| label: librería
+#| message: false
+#| warning: false
+
+# Colección de paquetes de Tidyverse
+library(tidyverse)
+
+# Estilos para ggplot2
+library(ggthemes)
+
+# Paletas de colores de RColorBrewer
+library(RColorBrewer)
+
+# Paletas de colores de viridis
+library(viridisLite)
+
+# Gráficos interactivos
+library(plotly)
+
+# Manejo de datos vectoriales
+library(sf)
+
+# Manejo de datos raster
+library(terra)
+
+# Manejo de datos raster
+library(raster)
+
+# Mapas interactivos
+library(leaflet)
+
+# Acceso a datos en GBIF
+library(rgbif)
+
+# Datos geoespaciales
+library(geodata)
+
+# Modelado de distribución de especies
+library(dismo)
+
+library(rJava)
+```
+
+
+
+### Parametros Generales 
+
+Se realiza la obtención de datos de presencia, se indica el nombre de la especie que se va a modelar a una dataframe.
+
+Para obtener los datos de presencia se emplea el paquete rgbif, el cual proporciona acceso a los datos agrupados por el [Sistema Mundial de Información en Biodiversidad (GBIF)](https://www.gbif.org/)
+
+```{r}
+#| label: Datos_especie
+#| message: false
+#| warning: false
+
+# Nombre de la especie
+especie <- "Myadestes melanops"
+
+# Consulta a GBIF
+respuesta <- occ_search(
+  scientificName = especie, 
+  hasCoordinate = TRUE,
+  hasGeospatialIssue = FALSE,
+  limit = 10000
+)
+
+# Extraer datos de presencia
+presencia <- respuesta$data
+```
+
+Se descargan en un csv para acceder a la información de una forma más rápida
+
+```{r}
+#| label: csv
+#| message: false
+#| warning: false
+
+
+# Leer los datos de presencia de un archivo CSV
+presencia <- read_csv('presencia.csv')
+
+```
+
+Para manejarlo como datos geoespaciales la data frame se convierte en un sf (Geometría)
+
+```{r}
+
+#| label: sf
+#| message: false
+#| warning: false
+
+presencia <- st_as_sf(
+  presencia,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  remove = FALSE, # conservar las columnas de las coordenadas
+  crs = 4326
+)
+```
+
+Se realiza un gráfico en el que se puede identificar las vistas de la especie por país 
+
+```{r}
+#| label: grafico_pais
+#| message: false
+#| warning: false
+
+# Gráfico ggplot2
+grafico_ggplot2 <-
+  presencia |>
+  st_drop_geometry() |>
+  ggplot(aes(x = fct_infreq(countryCode))) +
+  geom_bar(
+    aes(
+      text = paste0(
+        "Cantidad de registros de presencia: ", after_stat(count)
+      )
+    )    
+  ) +
+  ggtitle("Cantidad de registros de presencia por país") +
+  xlab("País") +
+  ylab("Cantidad de registros de presencia") +
+  labs(caption = "Fuente: GBIF") +
+  theme_economist()
+
+# Gráfico plotly
+ggplotly(grafico_ggplot2, tooltip = "text") |> 
+  config(locale = 'es')
+```
+
+ En este análisis, se identifica que esta ave tiene su hábitat en Costa Rica y Panamá, siendo Costa Rica el país donde se registra la mayor cantidad de avistamientos.
+
+Además, se presenta un gráfico que muestra las regiones específicas de Costa Rica y Panamá donde es más probable observar a esta especie.
+
+```{r}
+#| label: grafico_paísprovincia
+#| message: false
+#| warning: false
+# Gráfico de barras apiladas por región de la ONU y nivel de economía
+grafico_barras_ggplot2 <-
+presencia |>
+  ggplot(aes(x = countryCode, fill = stateProvince)) +
+  geom_bar() +
+  ggtitle("Cantidad de aves por país y estado") +
+  xlab("País") +
+  ylab("cantidad") +
+  labs(fill = "Provincia") +
+  theme_minimal()
+
+# Gráfico de barras plotly
+ggplotly(grafico_barras_ggplot2) |> 
+  config(locale = 'es')
+```
+
+Un dato interesante sobre los avistamientos de esta ave es que, en Costa Rica, se encuentra presente en todas las provincias, destacándose San José como la provincia con el mayor número de registro
+
+
+## Carga de datos ambientales
+
+Se utilizan datos bioclimáticos temperatura y  precipitación como variables ambientales. A demás se incluyen los datos de altura para este estudio.  Pueden obtenerse mediante el paquete geodata. En este caso, se descargan las variables bioclimáticas de [WorldClim](https://www.worldclim.org/).
+
+```{r}
+#| label: datos_bioclimaticos
+#| message: false
+#| warning: false
+
+# Consulta a SRTM
+elevacion <- elevation_global(res = 10, path = tempdir())
+
+# Nombres de las variables de elevación
+names(elevacion)
+
+# Consulta a WorldClim
+clima <- worldclim_global(var = 'bio', res = 10, path = tempdir())
+
+# Nombres de las variables climáticas
+names(clima)
+
+# Consulta a SRTM
+elevacion <- elevation_global(res = 10, path = tempdir())
+
+# Nombres de las variables de elevación
+names(elevacion)
+
+```
+Se define el área de Estudio y se recortan las variables con el área definida.
+
+```{r}
+#| label: area_estudio 
+#| message: false
+#| warning: false
+# Definir la extensión del área de estudio
+area_estudio <- ext(
+  min(presencia$decimalLongitude) - 5, 
+  max(presencia$decimalLongitude) + 5,
+  min(presencia$decimalLatitude) - 5, 
+  max(presencia$decimalLatitude) + 5
+)
+
+# Recortar las variables bioclimáticas al área de estudio
+clima <- crop(clima, area_estudio)
+elevacion <- crop(elevacion, area_estudio)
+```
+
+## Mapa de Variables ambientales
+
+```{r}
+#| label: Mapa_elevaciónybioclima
+#| message: false
+#| warning: false
+# Paleta de colores de temperatura
+colores_temperatura <- colorNumeric(
+  palette = rev(brewer.pal(11, "RdYlBu")),
+  values(clima$wc2.1_10m_bio_1),
+  na.color = "transparent"
+)
+
+# Paleta de colores de precipitación
+colores_precipitacion <- colorNumeric(
+  palette = "Blues",
+  values(clima$wc2.1_10m_bio_12),
+  na.color = "transparent"
+)
+
+# Paleta de colores de elevación
+colores_elevacion <- colorNumeric(
+  palette = "YlGnBu", # Cambia según tu preferencia
+  values(elevacion),  # Usa el objeto 'elevacion'
+  na.color = "transparent"
+)
+
+# Mapa
+leaflet() |>
+  addTiles(group = "Mapa general") |>
+  addProviderTiles(
+    providers$Esri.WorldImagery, 
+    group = "Imágenes satelitales"
+  ) |>  
+  addProviderTiles(
+    providers$CartoDB.Positron, 
+    group = "Mapa blanco"
+  ) |>
+  addRasterImage( # capa raster de temperatura
+    clima$wc2.1_10m_bio_1,
+    colors = colores_temperatura,
+    opacity = 0.6,
+    group = "Temperatura",
+  ) |>
+  addRasterImage( # capa raster de precipitación
+    clima$wc2.1_10m_bio_12,
+    colors = colores_precipitacion,
+    opacity = 0.6,
+    group = "Precipitación",
+  ) |>
+  addRasterImage( # capa raster de elevación
+    elevacion,
+    colors = colores_elevacion, # Usa el objeto 'elevacion'
+    opacity = 0.6,
+    group = "Elevación",
+  ) |>
+  addCircleMarkers(
+    data = presencia,
+    stroke = F,
+    radius = 3,
+    fillColor = 'green',
+    fillOpacity = 1,
+    popup = paste(
+      paste0("<strong>País: </strong>", presencia$country),
+      paste0("<strong>Localidad: </strong>", presencia$locality),
+      paste0("<strong>Fecha: </strong>", presencia$eventDate),
+      paste0("<strong>Fuente: </strong>", presencia$institutionCode),
+      paste0("<a href='", presencia$occurrenceID, "'>Más información</a>"),
+      sep = '<br/>'
+    ),
+    group = "Registros de Myadestes melanops"
+  ) |>  
+  addLegend(
+    title = "Temperatura",
+    values = values(clima$wc2.1_10m_bio_1),
+    pal = colores_temperatura,
+    position = "bottomleft",
+    group = "Temperatura"
+  ) |>
+  addLegend(
+    title = "Precipitación",
+    values = values(clima$wc2.1_10m_bio_12),
+    pal = colores_precipitacion,
+    position = "bottomleft",
+    group = "Precipitación"
+  ) |>
+  addLegend(
+    title = "Elevación",
+    values = values(elevacion),  # Usa el objeto 'elevacion'
+    pal = colores_elevacion,
+    position = "bottomleft",
+    group = "Elevación"
+  ) |>  
+  addLayersControl(
+    baseGroups = c("Mapa general", "Imágenes satelitales", "Mapa blanco"),
+    overlayGroups = c("Temperatura", "Precipitación", "Elevación", "Registros de Myadestes melanops")
+  ) |>
+  hideGroup("Precipitación") |>
+  hideGroup("Elevación")
+```
+
+El **Myadestes melanops** es interensante ver la distribución de esta ave, ya que de encuentra en partes de altura media del país de 1000msnm a maximo 2500msnm.
+
+
+# Modelazación 
+
+Creación de conjuntos de entrenamiento y evaluación 
+
+Primero, se eliminan las coordenadas duplicadas del conjunto de datos de presencia.
+
+```{r}
+# Crear dataframe con columnas de longitud y latitud
+coordenadas_presencia <- data.frame(
+  decimalLongitude = presencia$decimalLongitude,
+  decimalLatitude = presencia$decimalLatitude
+)
+
+# Eliminar coordenadas duplicadas
+coordenadas_presencia <- unique(coordenadas_presencia)
+```
+
+
+Seguidamente se dividen los datos de presencia en dos subconjuntos:
+
++ Entrenamiento: para desarrollar el modelo.
++ Evaluación: para evaluar el modelo.
+
+```{r}
+# Establecer una "semilla" para garantizar que la selección aleatoria sea reproducible
+set.seed(123)
+
+# Cantidad de registros de presencia
+n_presencia <- nrow(coordenadas_presencia)
+
+# Con sample(), se selecciona aleatoriamente una proporción (ej. 0.7) 
+# de los índices de los datos de presencia para el conjunto de entrenamiento
+indices_entrenamiento <- sample(
+  1:n_presencia, 
+  size = round(0.7 * n_presencia)
+)
+
+# Crear el subconjunto de entrenamiento utilizando los índices seleccionados
+entrenamiento <- coordenadas_presencia[indices_entrenamiento, ]
+
+# Crear el subconjunto de evaluación con los datos restantes
+evaluacion <- coordenadas_presencia[-indices_entrenamiento, ]
+```
+
+
+
+## Modelo Maxent
+
+El algoritmo Maxent se basa en el principio de máxima entropía, que sugiere que, con información incompleta, la mejor opción es la distribución menos sesgada posible que aún sea consistente con los datos. En este caso, Maxent encuentra la distribución de la especie que maximiza la entropía (es decir, la más uniforme posible) dado un conjunto de restricciones.
+
+La implementación de Maxent que se incluye en el paquete dismo fue programada en el lenguaje Java. Por lo tanto, para ejecutarla es necesario instalar:
+
+El Java Development Kit (JDK), para ejecutar aplicaciones desarrolladas en Java.
+El paquete rJava para acceder a aplicaciones Java desde R.
+
+```{r}
+# Los datos de clima deben convertirse al formato que usa el paquete raster
+# debido a es este el que acepta el paquete dismo
+clima <- raster::stack(clima)
+
+# Ejecutar el modelo
+modelo_maxent <- maxent(x = clima, p = entrenamiento)
+
+# Aplicar el modelo entrenado a las variables climáticas 
+# para generar un mapa de idoneidad del hábitat
+prediccion <- predict(modelo_maxent, clima)
+```
+
+### Evaluación 
+
+Acontinuación se genera métricas de desempeño del modelo utilizando los valores predichos en puntos de presencia y ausencia.
+
+```{r}
+# terra::extract() extrae los valores del raster de predicción 
+# en las coordenadas de evaluación
+# eval_pres almacena los valores de idoneidad predichos 
+# en los puntos de evaluación de presencia
+eval_pres <- terra::extract(
+  prediccion, 
+  evaluacion[, c('decimalLongitude', 'decimalLatitude')]
+)
+
+# Generar puntos aleatorios dentro del área de estudio definida. 
+# Estos puntos se asumen como ausencias de la especie.
+ausencias <- randomPoints(mask = clima, n = 1000)
+
+# eval_aus almacena los valores de idoneidad predichos
+# en los puntos de ausencia
+eval_aus <- terra::extract(
+  prediccion, 
+  ausencias
+)
+
+# Generar estadísticas de evaluación del modelo
+resultado_evaluacion <- evaluate(p = eval_pres, a = eval_aus)
+```
+
+
+## Curva ROC y el AUC
+
+```{r}
+# Datos para graficar la curva ROC
+datos_roc <- data.frame(
+  FPR = resultado_evaluacion@FPR,
+  TPR = resultado_evaluacion@TPR,
+  Umbral = resultado_evaluacion@t
+)
+
+# Valor AUC
+auc <- resultado_evaluacion@auc
+
+# Gráfico ggplot2
+grafico_ggplot2 <-
+  ggplot(
+    datos_roc, 
+    aes(
+      x = FPR, 
+      y = TPR,
+      u = Umbral
+    )
+  ) +
+  geom_line(
+    color = "green", 
+    size = 1
+  ) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "orange") +
+  labs(title = paste("Curva ROC (AUC =", round(auc, 3), ")"),
+       x = "Tasa de falsos positivos (FPR)",
+       y = "Tasa de verdaderos positivos (TPR)") +
+  theme_minimal()
+
+# Gráfico plotly
+ggplotly(grafico_ggplot2) |> 
+  config(locale = 'es')
+```
+
+
+### Annálisis del Resultado
+
+
+Un **_AUC de 0.986 demuestra_**  que el modelo tiene una alta capacidad para discriminar entre las clases positivas y negativas, lo que significa que tiene un rendimiento excelente. **_La curva ROC_** muestra que el modelo tiene una baja tasa de falsos positivos y una alta tasa de verdaderos positivos, lo cual es indicativo de un excelente ajuste para las clases.
+
+## Mapa de idoneidad del hábitat.
+
+```{r}
+# Paleta de colores del modelo
+colores_modelo <- colorNumeric(
+  palette = c("white", "black"),
+  values(prediccion),
+  na.color = "transparent"
+)
+
+# Mapa
+leaflet() |>
+  addTiles(group = "Mapa general") |>
+  addProviderTiles(
+    providers$Esri.WorldImagery, 
+    group = "Imágenes satelitales"
+  ) |>  
+  addProviderTiles(
+    providers$CartoDB.Positron, 
+    group = "Mapa blanco"
+  ) |>
+  addRasterImage( # capa raster de temperatura
+    clima$wc2.1_10m_bio_1,
+    colors = colores_temperatura, # paleta de colores
+    opacity = 0.6,
+    group = "Temperatura",
+  ) |>
+  addRasterImage( # capa raster de precipitación
+    clima$wc2.1_10m_bio_12,
+    colors = colores_precipitacion, # paleta de colores
+    opacity = 0.6,
+    group = "Precipitación",
+  ) |>
+  addRasterImage( # capa raster del modelo de distribución
+    prediccion,
+    colors = colores_modelo,
+    opacity = 0.6,
+    group = "Modelo de distribución",
+  ) |>  
+  addCircleMarkers(
+    # capa de registros de presencia (puntos)
+    data = presencia,
+    stroke = F,
+    radius = 3,
+    fillColor = 'red',
+    fillOpacity = 1,
+    popup = paste(
+      paste0("<strong>País: </strong>", presencia$country),
+      paste0("<strong>Localidad: </strong>", presencia$locality),
+      paste0("<strong>Fecha: </strong>", presencia$eventDate),
+      paste0("<strong>Fuente: </strong>", presencia$institutionCode),
+      paste0("<a href='", presencia$occurrenceID, "'>Más información</a>"),
+      sep = '<br/>'
+    ),
+    group = "Registros de Myadestes melanops"
+  ) |>  
+  addLegend(
+    title = "Temperatura",
+    values = values(clima$wc2.1_10m_bio_1),
+    pal = colores_temperatura,
+    position = "bottomleft",
+    group = "Temperatura"
+  ) |>
+  addLegend(
+    title = "Precipitación",
+    values = values(clima$wc2.1_10m_bio_12),
+    pal = colores_precipitacion,
+    position = "bottomleft",
+    group = "Precipitación"
+  ) |>
+  addLegend(
+    title = "Modelo de distribución",
+    values = values(prediccion),
+    pal = colores_modelo,
+    position = "bottomright",
+    group = "Modelo de distribución"
+  ) |>  
+  addLayersControl(
+    # control de capas
+    baseGroups = c("Mapa general", "Imágenes satelitales", "Mapa blanco"),
+    overlayGroups = c(
+      "Temperatura",
+      "Precipitación",
+      "Modelo de distribución",
+      "Registros de Myadestes melanops"
+    )
+  ) |>
+  hideGroup("Temperatura") |>
+  hideGroup("Precipitación")
+```
+
+## Mapa  presencia y ausencia de acuerdo con un umbral.
+
+```{r}
+
+# Definir el umbral
+umbral <- 0.5
+
+# Crear el raster binario
+prediccion_binaria <- (prediccion >= umbral) * 1
+
+# Crear la paleta de colores para el raster binario
+colores_prediccion_binaria <- colorFactor(
+  palette = c("transparent", "blue"),  # "transparent" para las áreas no adecuadas
+  domain = c(0, 1),
+  na.color = "transparent"
+)
+
+# Mapa
+leaflet() |>
+  addTiles(group = "Mapa general") |>
+  addProviderTiles(
+    providers$Esri.WorldImagery, 
+    group = "Imágenes satelitales"
+  ) |>
+  addProviderTiles(
+    providers$CartoDB.Positron, 
+    group = "Mapa blanco"
+  ) |>
+  addRasterImage(
+    prediccion_binaria,
+    colors = colores_prediccion_binaria,
+    opacity = 0.6,
+    group = "Modelo de distribución binario",
+  ) |>
+  addCircleMarkers(
+    data = presencia,
+    stroke = FALSE,
+    radius = 3,
+    fillColor = 'red',
+    fillOpacity = 1,
+    popup = paste(
+      paste0("<strong>País: </strong>", presencia$country),
+      paste0("<strong>Localidad: </strong>", presencia$locality),
+      paste0("<strong>Fecha: </strong>", presencia$eventDate),
+      paste0("<strong>Fuente: </strong>", presencia$institutionCode),
+      paste0("<a href='", presencia$occurrenceID, "'>Más información</a>"),
+      sep = '<br/>'
+    ),
+    group = "Registros de Myadestes melanops"
+  ) |>
+  addLegend(
+    title = "Modelo de distribución binario",
+    labels = c("Ausencia", "Presencia"),
+    colors = c("transparent", "blue"),
+    position = "bottomright",
+    group = "Modelo de distribución binario"
+  ) |>
+  addLayersControl(
+    baseGroups = c("Mapa general", "Imágenes satelitales", "Mapa blanco"),
+    overlayGroups = c(
+      "Modelo de distribución binario",
+      "Registros de Myadestes melanops"
+    )
+  )
+
+```
+
+## Modelos de nichos ecológicos - proyección a escenarios de clima futuro
+
+### Trayectorias socioeconómicas compartidas (SSP)
+
+El IPCC proyecta el cambio climático según escenarios de emisiones de gases de efecto invernadero llamados Trayectorias Socioeconómicas Compartidas (SSP). Estas trayectorias se asocian con niveles de forzamiento radiativo en W/m² para 2100.
+
+Ejemplos:
+
++ SSP1-2.6: Escenario sostenible (bajas emisiones, economía verde).
++ SSP2-4.5: Escenario intermedio (desarrollo moderado).
++ SSP3-7.0: Desarrollo desigual (altas emisiones).
++ SSP5-8.5: Altas emisiones (uso intensivo de combustibles fósiles).
+
+### Modelos generales de circulación (GCM)
+
+Es una herramienta computacional que simula el sistema climático global mediante ecuaciones de dinámica de fluidos y termodinámica, representando procesos en la atmósfera, océanos, criósfera y biosfera. Ejemplos de GCM incluyen ACCESS-CM2, GISS-E2-1-G y MPI-ESM1-2-HR, desarrollados por instituciones internacionales para estudiar el clima pasado, presente y futuro bajo diferentes escenarios de emisiones (SSP).
+
+En este documento, se utiliza un GCM para modelar el Nicho Ecológico de *Myadestes melanops* y proyectarlo a un escenario climático futuro.
+
+#### Parametros Generales
+
+```{r}
+# Nombre de la especie
+especie <- "Bradypus variegatus"
+
+# Desplazamiento (offset) para delimitar el área de estudio
+desplazamiento = 5
+
+# Resolución espacial de los datos climáticos
+resolucion = 10
+
+# SSP
+ssp <- "585"
+
+# GCM
+gcm <- "HadGEM3-GC31-LL"
+
+# Proporción de datos de entreamiento a utilizar en el modelo
+proporcion_entrenamiento = 0.7
+```
+
+
+#### Obtención de Datos de clima actual 
+
+```{r}
+# Obtener datos climáticos actuales
+clima_actual <- worldclim_global(
+  var = 'bio', 
+  res = resolucion, 
+  path = tempdir()
+)
+
+# Recortar los datos climáticos para el área de estudio
+clima_actual <- crop(clima_actual, area_estudio)
+
+# Desplegar nombres de las variables climáticas
+names(clima_actual)
+```
+
+#### Obtención de Datos de Clima Futuro
+
+```{r}
+# Obtener datos climáticos para escenario futuro
+clima_futuro <- cmip6_world(
+  var = "bioc",
+  res = resolucion,
+  ssp = ssp,
+  model = gcm,
+  time = "2041-2060",
+  path = tempdir()
+)
+
+# Recortar los datos climáticos para el área de estudio
+clima_futuro <- crop(clima_futuro, area_estudio)
+
+# Desplegar nombres de las variables
+names(clima_futuro)
+```
+
+
+### Modelación 
+
+#### Creación de conjuntos de entrenamiento y evaluación 
+
+```{r}
+# Crear dataframe con columnas de longitud y latitud
+coordenadas_presencia <- data.frame(
+  decimalLongitude = presencia$decimalLongitude,
+  decimalLatitude = presencia$decimalLatitude
+)
+
+# Eliminar coordenadas duplicadas
+coordenadas_presencia <- unique(coordenadas_presencia)
+```
+
+```{r}
+# Establecer una "semilla" para garantizar que la selección aleatoria sea reproducible
+set.seed(123)
+
+# Cantidad de registros de presencia
+n_presencia <- nrow(coordenadas_presencia)
+
+# Con sample(), se selecciona aleatoriamente una proporción (ej. 0.7) 
+# de los índices de los datos de presencia para el conjunto de entrenamiento
+indices_entrenamiento <- sample(
+  1:n_presencia, 
+  size = round(proporcion_entrenamiento * n_presencia)
+)
+
+# Crear el subconjunto de entrenamiento utilizando los índices seleccionados
+entrenamiento <- coordenadas_presencia[indices_entrenamiento, ]
+
+# Crear el subconjunto de evaluación con los datos restantes
+evaluacion <- coordenadas_presencia[-indices_entrenamiento, ]
+```
+
+
+
+### Modelo con clima actual 
+
+```{r}
+# Los datos de clima deben convertirse al formato que usa el paquete raster
+# debido a es este el que acepta el paquete dismo
+clima_actual <- raster::stack(clima_actual)
+
+# Generar el modelo
+modelo_actual <- maxent(x = clima_actual, p = entrenamiento)
+
+# Aplicar el modelo entrenado al clima actual
+prediccion_actual <- predict(modelo_actual, clima_actual)
+```
+
+### Modelo con Clima Futuro 
+
+```{r}
+# Convertir variables climáticas futuras al formato raster stack
+clima_futuro_raster <- raster::stack(clima_futuro)
+
+# Asegurar que las variables tengan los mismos nombres y orden
+names(clima_futuro_raster) <- names(clima_actual)
+
+# Proyectar el modelo al clima futuro
+prediccion_futuro <- predict(modelo_actual, clima_futuro_raster)
+```
+
+
+#### Diferencia
+
+```{r}
+# Calcular la diferencia
+diferencia <- prediccion_futuro - prediccion_actual
+```
+### Mapa
+
+```{r}
+# Paleta de colores del modelo con clima actual
+colores_modelo_actual <- colorNumeric(
+  palette = c("white", "black"),
+  values(prediccion_actual),
+  na.color = "transparent"
+)
+
+# Paleta de colores del modelo con clima futuro
+colores_modelo_futuro <- colorNumeric(
+  palette = c("white", "black"),
+  values(prediccion_futuro),
+  na.color = "transparent"
+)
+
+# Crear paleta de colores para la diferencia
+paleta_diferencia <- colorNumeric(
+  palette = c("red", "white", "blue"),
+  domain = c(min(values(diferencia), na.rm = TRUE), max(values(diferencia), na.rm = TRUE)),
+  na.color = "transparent"
+)
+
+# Mapa de la diferencia
+leaflet() |>
+  addTiles(group = "Mapa general") |>
+  addProviderTiles(
+    providers$Esri.WorldImagery, 
+    group = "Imágenes satelitales"
+  ) |>  
+  addProviderTiles(
+    providers$CartoDB.Positron, 
+    group = "Mapa blanco"
+  ) |>
+  addRasterImage(
+    prediccion_actual,
+    colors = colores_modelo_actual,
+    opacity = 0.6,
+    group = "Modelo con clima actual",
+  ) |>
+  addRasterImage(
+    prediccion_futuro,
+    colors = colores_modelo_futuro,
+    opacity = 0.6,
+    group = "Modelo con clima futuro",
+  ) |>  
+  addRasterImage(
+    diferencia,
+    colors = paleta_diferencia,
+    opacity = 0.6,
+    group = "Diferencia",
+  ) |>  
+  addLegend(
+    title = "Modelo con clima actual",
+    values = values(prediccion_actual),
+    pal = colores_modelo_actual,
+    position = "bottomright",
+    group = "Modelo con clima actual"
+  ) |>    
+  addLegend(
+    title = "Modelo con clima futuro",
+    values = values(prediccion_futuro),
+    pal = colores_modelo_futuro,
+    position = "bottomright",
+    group = "Modelo con clima futuro"
+  ) |>     
+  addLegend(
+    title = "Diferencia",
+    values = values(diferencia),
+    pal = paleta_diferencia,
+    position = "bottomleft",
+    group = "Diferencia"
+  ) |>  
+  addLayersControl(
+    # control de capas
+    baseGroups = c("Mapa general", "Imágenes satelitales", "Mapa blanco"),
+    overlayGroups = c(
+      "Modelo con clima actual",
+      "Modelo con clima futuro",
+      "Diferencia"
+    )
+  ) |>
+  hideGroup("Modelo con clima actual") |>
+  hideGroup("Modelo con clima futuro")
+```
+
+En el mapa, las áreas en rojo indican una disminución en la idoneidad del hábitat, mientras que las áreas en azul indican un aumento.
+
