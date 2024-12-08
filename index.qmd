@@ -12,7 +12,7 @@ theme: cosmo
 
 El jilguero es una especie endémica de zonas altas de **Costa Rica y el oeste de Panamá**. Es una de las especies más apreciadas como ave de jaula en Costa Rica, esto debido a su hermoso canto.
 
-El estudio de esta ave es importante ya que solo en estos dos país, pero principalmente en Costa Rica es donde se cuenta con precencia.
+El estudio de esta ave es importante ya que solo en estos dos país, pero principalmente en Costa Rica es donde se cuenta con presencia.
 
 ## Introducción
 
@@ -22,12 +22,14 @@ Los modelos de nichos ecológicos permiten predecir la distribución potencial d
 
 ### Carga de librería
 
-Este debe comenzar con la carga de toda las librerías requeridas para trabajar los datos. desde crear gráficos, mapas y modelos.
-
+Este debe comenzar con la carga de toda las librerías requeridas para trabajar los datos. Desde crear gráficos, mapas y modelos.
 ```{r}
-.libPaths("C:/Users/svcan/paquetes_personales1")
+.libPaths("C:/User/svcan/PAQUETE_2")
 ```
 
+```{r}
+library(tidyverse)
+```
 
 
 ```{r}
@@ -37,7 +39,7 @@ Este debe comenzar con la carga de toda las librerías requeridas para trabajar 
 
 # Colección de paquetes de Tidyverse
 
-library(tidyverse)
+
 
 # Estilos para ggplot2
 library(ggthemes)
@@ -100,7 +102,6 @@ respuesta <- occ_search(
 # Extraer datos de presencia
 presencia <- respuesta$data
 ```
-
 
 Se descargan en un csv para acceder a la información de una forma más rápida
 
@@ -659,7 +660,7 @@ En este documento, se utiliza un GCM para modelar el Nicho Ecológico de *Myades
 
 ```{r}
 # Nombre de la especie
-especie <- "Bradypus variegatus"
+especie <- "Myadestes melanops"
 
 # Desplazamiento (offset) para delimitar el área de estudio
 desplazamiento = 5
@@ -877,4 +878,3 @@ leaflet() |>
 ```
 
 En el mapa, las áreas en rojo indican una disminución en la idoneidad del hábitat, mientras que las áreas en azul indican un aumento.
-
