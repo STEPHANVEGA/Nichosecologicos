@@ -22,15 +22,11 @@ Los modelos de nichos ecológicos permiten predecir la distribución potencial d
 
 ### Carga de librería
 
-Este debe comenzar con la carga de toda las librerías requeridas para trabajar los datos. Desde crear gráficos, mapas y modelos.
-```{r}
-.libPaths("C:/User/svcan/PAQUETE_2")
-```
+Este debe comenzar con la carga de toda las librerías requeridas para trabajar los datos. desde crear gráficos, mapas y modelos.
 
 ```{r}
-library(tidyverse)
+.libPaths("C:/Users/svcan/paquetes_personales1")
 ```
-
 
 ```{r}
 #| label: librería
@@ -39,7 +35,7 @@ library(tidyverse)
 
 # Colección de paquetes de Tidyverse
 
-
+library(tidyverse)
 
 # Estilos para ggplot2
 library(ggthemes)
@@ -660,7 +656,7 @@ En este documento, se utiliza un GCM para modelar el Nicho Ecológico de *Myades
 
 ```{r}
 # Nombre de la especie
-especie <- "Myadestes melanops"
+especie <- "Bradypus variegatus"
 
 # Desplazamiento (offset) para delimitar el área de estudio
 desplazamiento = 5
